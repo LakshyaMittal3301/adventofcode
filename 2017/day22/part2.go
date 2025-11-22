@@ -6,7 +6,6 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
-	"time"
 )
 
 func readInput() [][]string {
@@ -17,7 +16,7 @@ func readInput() [][]string {
 
 	dir := filepath.Dir(filename)
 
-	path := filepath.Join(dir, "input.txt")
+	path := filepath.Join(dir, "input2.txt")
 
 	file, err := os.Open(path)
 	if err != nil {
@@ -119,7 +118,6 @@ func printGrid(grid [][]string, currX, currY, dir int) {
 }
 
 func clearScreen() {
-	// Move cursor to top-left and clear screen
 	fmt.Print("\033[H\033[2J")
 }
 
@@ -140,17 +138,16 @@ func main() {
 	currX, currY := n, n
 	dir := 0
 
-	iter := 300
+	iter := 10000000
 	count := 0
-	for i := range iter {
+	// for i := range iter {
+	for range iter {
 		if currX == len(grid)-1 || currY == len(grid)-1 || currX == 0 || currY == 0 {
 			grid = tripleGrid(grid, &currX, &currY)
 		}
-		printGrid(grid, currX, currY, dir)
-		fmt.Printf("\nstep: %d   infections: %d\n", i, count)
-
-		// small pause to see the animation
-		time.Sleep(100 * time.Millisecond)
+		// printGrid(grid, currX, currY, dir)
+		// fmt.Printf("\nstep: %d   infections: %d\n", i, count)
+		// time.Sleep(100 * time.Millisecond)
 		count += burst(grid, &currX, &currY, &dir)
 	}
 	fmt.Printf("Answer: %d", count)
