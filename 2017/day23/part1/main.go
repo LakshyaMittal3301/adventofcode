@@ -132,5 +132,6 @@ func main() {
 	registers = make(map[string]int64)
 
 	count := execute(instructions)
-	fmt.Printf("Answer: %v\n", count)
+	fmt.Printf("Answer: %v", count)
+
 }
