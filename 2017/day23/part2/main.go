@@ -66,44 +66,44 @@ func countCompositeBetween(a, b, inc int) (count int) {
 }
 
 func main() {
-	// b := 0
-	// c := 0
-	// d := 0
-	// e := 0
-	// f := 0
-	// h := 0
+	b := 0
+	c := 0
+	d := 0
+	e := 0
+	f := 0
+	h := 0
 
-	// b = 106500
-	// c = 123500
+	b = 106500
+	c = 123500
 
-	// for {
-	// 	f = 1
-	// 	d = 2
-	// 	for {
-	// 		e = 2
-	// 		for {
-	// 			if d*e == b {
-	// 				f = 0
-	// 			}
-	// 			e++
-	// 			if e == b {
-	// 				break
-	// 			}
-	// 		}
-	// 		d++
-	// 		if d == b {
-	// 			break
-	// 		}
-	// 	}
-	// 	if f == 0 {
-	// 		h = h + 1
-	// 	}
-	// 	if c == b {
-	// 		break
-	// 	}
-	// 	b = b + 17
-	// }
-	// fmt.Printf("Answer: %d\n", h)
+	for {
+		f = 1
+		d = 2
+		for {
+			e = 2
+			for {
+				if d*e == b {
+					f = 0
+				}
+				e++
+				if e == b {
+					break
+				}
+			}
+			d++
+			if d == b {
+				break
+			}
+		}
+		if f == 0 {
+			h = h + 1
+		}
+		if c == b {
+			break
+		}
+		b = b + 17
+	}
+	fmt.Printf("Answer: %d\n", h)
 
 	fmt.Printf("Answer: %d", countCompositeBetween(106500, 123500, 17))
 
