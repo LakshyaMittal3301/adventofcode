@@ -70,20 +70,40 @@
       .status {
         font-weight: 600;
       }
+      .board-wrap {
+        display: inline-grid;
+        margin-top: 16px;
+        padding: 10px;
+        border: 2px solid #222;
+        background: #ffffff;
+        gap: 0;
+      }
       .board {
         display: grid;
-        margin-top: 16px;
-        border: 2px solid #222;
-        background: #fff;
+        gap: 0;
+      }
+      .labels {
+        display: grid;
+        align-items: center;
+        justify-items: center;
+        color: #444;
+        font-size: 11px;
+        user-select: none;
+        width: 28px;
+        height: 28px;
+        line-height: 1;
       }
       .board .cell {
-        border: 1px solid #eee;
-        width: 36px;
-        height: 36px;
+        border: 0;
+        width: 72px;
+        height: 72px;
         display: grid;
         place-items: center;
-        font-size: 11px;
+        font-size: 16px;
         color: #222;
+        box-sizing: border-box;
+        background: #fff9e6;
+        box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.05);
       }
       .legend {
         display: flex;
@@ -113,9 +133,9 @@
   <body>
     <h1>Tile Solver (client-only)</h1>
     <p class="info">
-      Define a board (area ≤ configurable limit), draw up to 6 pieces on 3x3
-      grids, set quantities, and solve. All rotations/flips are allowed; empty
-      cells are allowed.
+      Define a board (height/width ≤ 12), draw up to 6 pieces on 3x3 grids, set
+      quantities, and solve. All rotations/flips are allowed; empty cells are
+      allowed.
     </p>
 
     <form id="form">
@@ -128,7 +148,14 @@
           Width
           <input type="number" id="width" value="4" min="1" max="12" />
         </label>
-        <span class="info" id="areaInfo">Max area: 100</span>
+        <span class="info" id="areaInfo">Max height/width: 12</span>
+      </div>
+      <div class="row">
+        <label class="inline">
+          Iteration limit
+          <input type="number" id="iterLimit" value="2000000" min="0" step="1" />
+        </label>
+        <span class="info">Higher = slower; 0 means no iterations.</span>
       </div>
 
       <div class="pieces" id="pieces"></div>
@@ -141,11 +168,12 @@
     </form>
 
     <div id="result"></div>
+    <div id="loading" style="display:none; margin-top:8px;" class="info">Solving…</div>
 
     <script type="module">
       import { solve } from "./solver.js";
 
-      const MAX_AREA = 100; // change here to tighten/loosen
+      const MAX_DIM = 12;
       const MAX_PIECES = 6;
       const colors = ["#d32f2f", "#1976d2", "#388e3c", "#f9a825", "#6a1b9a", "#00838f"];
 
@@ -256,28 +284,38 @@
       const errorEl = document.getElementById("error");
       const resultEl = document.getElementById("result");
       const areaInfo = document.getElementById("areaInfo");
-      areaInfo.textContent = `Max area: ${MAX_AREA}`;
+      const loadingEl = document.getElementById("loading");
+      areaInfo.textContent = `Max height/width: ${MAX_DIM}`;
 
       form.addEventListener("submit", (e) => {
         e.preventDefault();
         errorEl.textContent = "";
         resultEl.innerHTML = "";
         statusEl.textContent = "Solving…";
-        try {
-          const config = collectConfig();
-          const res = solve(config, { maxPieces: MAX_PIECES, maxQtyPerPiece: 20, iterationLimit: 2_000_000 });
-          if (!res.hasSolution) {
-            statusEl.textContent = "No solution";
-            resultEl.textContent = "";
-          } else {
-            statusEl.textContent = "Solution found";
-            renderBoard(config.height, config.width, res.placements);
+        loadingEl.style.display = "block";
+        // allow loading indicator to paint before heavy work
+        setTimeout(() => {
+          try {
+            const config = collectConfig();
+            const iterationLimit = collectIterationLimit();
+            const res = solve(config, { maxPieces: MAX_PIECES, maxQtyPerPiece: 20, iterationLimit });
+            if (!res.hasSolution) {
+              statusEl.textContent = res.iterationLimitReached
+                ? "No solution within iteration limit"
+                : "No solution";
+              resultEl.textContent = "";
+            } else {
+              statusEl.textContent = "Solution found";
+              renderBoard(config.height, config.width, res.placements);
+            }
+          } catch (err) {
+            statusEl.textContent = "Error";
+            errorEl.textContent = err.message ?? String(err);
+            console.error(err);
+          } finally {
+            loadingEl.style.display = "none";
           }
-        } catch (err) {
-          statusEl.textContent = "Error";
-          errorEl.textContent = err.message ?? String(err);
-          console.error(err);
-        }
+        }, 0);
       });
 
       function collectConfig() {
@@ -286,8 +324,8 @@
         if (!Number.isFinite(height) || !Number.isFinite(width) || height <= 0 || width <= 0) {
           throw new Error("Height and width must be positive numbers");
         }
-        if (height * width > MAX_AREA) {
-          throw new Error(`Area exceeds limit (${MAX_AREA})`);
+        if (height > MAX_DIM || width > MAX_DIM) {
+          throw new Error(`Height and width must be <= ${MAX_DIM}`);
         }
         const pieces = [];
         const cards = piecesEl.querySelectorAll(".piece");
@@ -311,14 +349,69 @@
         if (pieces.length === 0) {
           throw new Error("At least one piece with quantity > 0 is required");
         }
-        return { height, width, pieces, maxArea: MAX_AREA };
+        return { height, width, pieces, maxArea: MAX_DIM * MAX_DIM };
+      }
+
+      function collectIterationLimit() {
+        const val = Number(document.getElementById("iterLimit").value);
+        if (!Number.isFinite(val) || val < 0) {
+          throw new Error("Iteration limit must be a number greater than or equal to 0");
+        }
+        return Math.floor(val);
       }
 
       function renderBoard(height, width, placements) {
+        const wrap = document.createElement("div");
+        wrap.className = "board-wrap";
+        wrap.style.gridTemplateColumns = `28px repeat(${width}, 72px) 28px`;
+        wrap.style.gridTemplateRows = `28px repeat(${height}, 72px) 28px`;
+
+        // Top labels
+        for (let c = 0; c < width; c++) {
+          const lab = document.createElement("div");
+          lab.className = "labels";
+          lab.textContent = String(c);
+          lab.style.gridColumn = String(c + 2);
+          lab.style.gridRow = "1";
+          wrap.appendChild(lab);
+        }
+
+        // Bottom labels
+        for (let c = 0; c < width; c++) {
+          const lab = document.createElement("div");
+          lab.className = "labels";
+          lab.textContent = String(c);
+          lab.style.gridColumn = String(c + 2);
+          lab.style.gridRow = String(height + 2);
+          wrap.appendChild(lab);
+        }
+
+        // Left labels
+        for (let r = 0; r < height; r++) {
+          const lab = document.createElement("div");
+          lab.className = "labels";
+          lab.textContent = String(r);
+          lab.style.gridColumn = "1";
+          lab.style.gridRow = String(r + 2);
+          wrap.appendChild(lab);
+        }
+
+        // Right labels
+        for (let r = 0; r < height; r++) {
+          const lab = document.createElement("div");
+          lab.className = "labels";
+          lab.textContent = String(r);
+          lab.style.gridColumn = String(width + 2);
+          lab.style.gridRow = String(r + 2);
+          wrap.appendChild(lab);
+        }
+
         const board = document.createElement("div");
         board.className = "board";
-        board.style.gridTemplateColumns = `repeat(${width}, 36px)`;
-        board.style.gridTemplateRows = `repeat(${height}, 36px)`;
+        board.style.gridTemplateColumns = `repeat(${width}, 72px)`;
+        board.style.gridTemplateRows = `repeat(${height}, 72px)`;
+        board.style.gridColumn = `2 / span ${width}`;
+        board.style.gridRow = `2 / span ${height}`;
 
         const totalCells = height * width;
         const cells = Array.from({ length: totalCells }, (_, idx) => {
@@ -336,8 +429,8 @@
           });
         });
 
-        const borderThick = "3px solid #111";
-        const borderThin = "1px solid #ddd";
+        const borderThick = "4px solid #111";
+        const borderThin = "1px solid rgba(0,0,0,0.12)";
 
         placements.forEach((p, placementIdx) => {
           const color = colors[p.pieceId % colors.length];
@@ -358,8 +451,13 @@
             cell.style.borderBottom = bottomSame ? borderThin : borderThick;
             cell.style.borderLeft = leftSame ? borderThin : borderThick;
             cell.style.borderRight = rightSame ? borderThin : borderThick;
+            cell.style.boxShadow = topSame && bottomSame && leftSame && rightSame
+              ? ""
+              : "0 0 0 1px rgba(0,0,0,0.08)";
           });
         });
+
+        wrap.appendChild(board);
 
         const legend = document.createElement("div");
         legend.className = "legend";
@@ -376,7 +474,7 @@
         });
 
         resultEl.innerHTML = "";
-        resultEl.append(board, legend);
+        resultEl.append(wrap, legend);
       }
     </script>
   </body>

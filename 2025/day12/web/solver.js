@@ -124,7 +124,7 @@ class DLX {
 
   search() {
     if (this.hasSolution) return;
-    if (this.iterations > this.iterationLimit) return;
+    if (this.iterations >= this.iterationLimit) return;
     if (this.root.right === this.root) {
       this.saveSolution();
       return;
@@ -141,7 +141,7 @@ class DLX {
       }
 
       this.iterations += 1;
-      if (this.iterations > this.iterationLimit) return;
+      if (this.iterations >= this.iterationLimit) return;
 
       this.search();
       if (this.hasSolution) return;
@@ -225,13 +225,28 @@ function normalizeShape(shape) {
   return res;
 }
 
-function findCellsForShape(shape, baseRow, baseCol, width) {
+function computeBounds(shape) {
+  let minR = 3, minC = 3, maxR = -1, maxC = -1;
+  for (let i = 0; i < 3; i++) {
+    for (let j = 0; j < 3; j++) {
+      if (shape[i][j]) {
+        if (i < minR) minR = i;
+        if (j < minC) minC = j;
+        if (i > maxR) maxR = i;
+        if (j > maxC) maxC = j;
+      }
+    }
+  }
+  return { minR, maxR, minC, maxC };
+}
+
+function findCellsForPlacement(shape, baseRow, baseCol, width, bounds) {
   const cells = [];
   for (let i = 0; i < 3; i++) {
     for (let j = 0; j < 3; j++) {
       if (shape[i][j]) {
-        const row = baseRow + i;
-        const col = baseCol + j;
+        const row = baseRow + (i - bounds.minR);
+        const col = baseCol + (j - bounds.minC);
         cells.push(row * width + col);
       }
     }
@@ -262,9 +277,15 @@ function buildMatrix(height, width, pieces) {
     const variants = uniqueVariants(piece.shape);
     for (let v = 0; v < variants.length; v++) {
       const variant = variants[v];
-      for (let r = 0; r <= height - 3; r++) {
-        for (let c = 0; c <= width - 3; c++) {
-          const cells = findCellsForShape(variant, r, c, width);
+      const bounds = computeBounds(variant);
+      if (bounds.maxR === -1) {
+        continue;
+      }
+      const shapeH = bounds.maxR - bounds.minR + 1;
+      const shapeW = bounds.maxC - bounds.minC + 1;
+      for (let r = 0; r <= height - shapeH; r++) {
+        for (let c = 0; c <= width - shapeW; c++) {
+          const cells = findCellsForPlacement(variant, r, c, width, bounds);
           if (cells.some((idx) => idx >= totalCells || idx < 0)) continue;
           for (let copy = 0; copy < piece.qty; copy++) {
             const row = [];
@@ -322,7 +343,12 @@ export function solve(config, options = {}) {
   const dlx = new DLX(rows, totalColumns, iterationLimit);
   dlx.search();
   if (!dlx.hasSolution) {
-    return { hasSolution: false, placements: [] };
+    return {
+      hasSolution: false,
+      placements: [],
+      iterations: dlx.iterations,
+      iterationLimitReached: dlx.iterations >= iterationLimit,
+    };
   }
   const placements = [];
   for (const rowIdx of dlx.solution) {
@@ -337,5 +363,10 @@ export function solve(config, options = {}) {
       });
     }
   }
-  return { hasSolution: true, placements };
+  return {
+    hasSolution: true,
+    placements,
+    iterations: dlx.iterations,
+    iterationLimitReached: dlx.iterations >= iterationLimit,
+  };
 }
