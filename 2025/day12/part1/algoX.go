@@ -98,14 +98,13 @@ func (d *DLX) saveSolution() {
 	d.HasSolution = true
 }
 
-func NewDLX(matrix [][]int) *DLX {
-	n := len(matrix)
-	m := len(matrix[0])
+func NewDLX(rows [][]int, numCols int) *DLX {
+	n := len(rows)
 	root := NewNode()
 	root.up, root.down, root.left, root.right = root, root, root, root
 	headerNodes := make([](*Node), 0)
 	headerNodes = append(headerNodes, root)
-	for i := range m {
+	for i := range numCols {
 		node := NewNode()
 		node.up, node.down = node, node
 		node.left = headerNodes[len(headerNodes)-1]
@@ -123,11 +122,7 @@ func NewDLX(matrix [][]int) *DLX {
 
 	for i := range n {
 		var prevNode *Node
-		for j := range m {
-			if matrix[i][j] == 0 {
-				continue
-			}
-
+		for _, j := range rows[i] {
 			node := NewNode()
 			node.down = headerNodes[j]
 			node.up = node.down.up
