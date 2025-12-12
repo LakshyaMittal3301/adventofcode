@@ -18,7 +18,7 @@ func readInput() []string {
 
 	dir := filepath.Dir(filename)
 
-	path := filepath.Join(dir, "../sampleinput.txt")
+	path := filepath.Join(dir, "../sampleinput2.txt")
 	// path := filepath.Join(dir, "../input.txt")
 
 	file, err := os.Open(path)
