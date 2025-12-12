@@ -1,0 +1,481 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Tile Solver Sandbox</title>
+    <style>
+      :root {
+        --gap: 12px;
+        --border: 1px solid #ccc;
+      }
+      body {
+        font-family: system-ui, -apple-system, sans-serif;
+        margin: 24px;
+        line-height: 1.5;
+      }
+      h1 {
+        margin-bottom: 4px;
+      }
+      form {
+        display: grid;
+        gap: var(--gap);
+        margin-bottom: 24px;
+      }
+      .row {
+        display: flex;
+        gap: var(--gap);
+        flex-wrap: wrap;
+        align-items: center;
+      }
+      label.inline {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+      }
+      .pieces {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+        gap: var(--gap);
+      }
+      .piece {
+        border: var(--border);
+        padding: 12px;
+      }
+      .grid3 {
+        display: grid;
+        grid-template-columns: repeat(3, 24px);
+        grid-template-rows: repeat(3, 24px);
+        gap: 4px;
+        margin-top: 8px;
+      }
+      .cellToggle {
+        width: 24px;
+        height: 24px;
+        border: var(--border);
+        cursor: pointer;
+        display: grid;
+        place-items: center;
+        font-size: 14px;
+        background: #f9f9f9;
+      }
+      .cellToggle.active {
+        background: #111;
+        color: #fff;
+      }
+      button {
+        padding: 8px 14px;
+        cursor: pointer;
+      }
+      .status {
+        font-weight: 600;
+      }
+      .board-wrap {
+        display: inline-grid;
+        margin-top: 16px;
+        padding: 10px;
+        border: 2px solid #222;
+        background: #ffffff;
+        gap: 0;
+      }
+      .board {
+        display: grid;
+        gap: 0;
+      }
+      .labels {
+        display: grid;
+        align-items: center;
+        justify-items: center;
+        color: #444;
+        font-size: 11px;
+        user-select: none;
+        width: 28px;
+        height: 28px;
+        line-height: 1;
+      }
+      .board .cell {
+        border: 0;
+        width: 72px;
+        height: 72px;
+        display: grid;
+        place-items: center;
+        font-size: 16px;
+        color: #222;
+        box-sizing: border-box;
+        background: #fff9e6;
+        box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.05);
+      }
+      .legend {
+        display: flex;
+        gap: 10px;
+        flex-wrap: wrap;
+        margin-top: 12px;
+      }
+      .legend span {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+      }
+      .swatch {
+        width: 18px;
+        height: 18px;
+        border: 1px solid #888;
+      }
+      .error {
+        color: #b00020;
+        font-weight: 600;
+      }
+      .info {
+        color: #444;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Tile Solver (client-only)</h1>
+    <p class="info">
+      Define a board (height/width ≤ 12), draw up to 6 pieces on 3x3 grids, set
+      quantities, and solve. All rotations/flips are allowed; empty cells are
+      allowed.
+    </p>
+
+    <form id="form">
+      <div class="row">
+        <label class="inline">
+          Height
+          <input type="number" id="height" value="4" min="1" max="12" />
+        </label>
+        <label class="inline">
+          Width
+          <input type="number" id="width" value="4" min="1" max="12" />
+        </label>
+        <span class="info" id="areaInfo">Max height/width: 12</span>
+      </div>
+      <div class="row">
+        <label class="inline">
+          Iteration limit
+          <input type="number" id="iterLimit" value="2000000" min="0" step="1" />
+        </label>
+        <span class="info">Higher = slower; 0 means no iterations.</span>
+      </div>
+
+      <div class="pieces" id="pieces"></div>
+
+      <div class="row">
+        <button type="submit">Solve</button>
+        <span id="status" class="status"></span>
+      </div>
+      <div id="error" class="error"></div>
+    </form>
+
+    <div id="result"></div>
+    <div id="loading" style="display:none; margin-top:8px;" class="info">Solving…</div>
+
+    <script type="module">
+      import { solve } from "./solver.js";
+
+      const MAX_DIM = 12;
+      const MAX_PIECES = 6;
+      const colors = ["#d32f2f", "#1976d2", "#388e3c", "#f9a825", "#6a1b9a", "#00838f"];
+
+      const defaultShapes = [
+        [
+          [true, true, true],
+          [true, true, false],
+          [true, true, false],
+        ],
+        [
+          [true, true, true],
+          [true, true, false],
+          [false, true, true],
+        ],
+        [
+          [false, true, true],
+          [true, true, true],
+          [true, true, false],
+        ],
+        [
+          [true, true, false],
+          [true, true, true],
+          [true, true, false],
+        ],
+        [
+          [true, true, true],
+          [true, false, false],
+          [true, true, true],
+        ],
+        [
+          [true, true, true],
+          [false, true, false],
+          [true, true, true],
+        ],
+      ];
+      const defaultQuantities = [0, 0, 0, 0, 2, 0];
+
+      const piecesEl = document.getElementById("pieces");
+      for (let i = 0; i < MAX_PIECES; i++) {
+        piecesEl.appendChild(buildPieceCard(i));
+      }
+
+      function buildPieceCard(id) {
+        const card = document.createElement("div");
+        card.className = "piece";
+        card.dataset.id = String(id);
+
+        const qtyInput = document.createElement("input");
+        qtyInput.type = "number";
+        qtyInput.min = "0";
+        qtyInput.max = "20";
+        qtyInput.value = "0";
+        qtyInput.id = `qty-${id}`;
+
+        const header = document.createElement("div");
+        header.className = "row";
+        header.innerHTML = `<strong>Piece ${id}</strong>`;
+        const label = document.createElement("label");
+        label.className = "inline";
+        label.append("Qty", qtyInput);
+        const swatch = document.createElement("span");
+        swatch.className = "swatch";
+        swatch.style.background = colors[id % colors.length];
+        header.append(label, swatch);
+        card.append(header);
+
+        const grid = document.createElement("div");
+        grid.className = "grid3";
+        for (let r = 0; r < 3; r++) {
+          for (let c = 0; c < 3; c++) {
+            const btn = document.createElement("div");
+            btn.className = "cellToggle";
+            btn.dataset.row = String(r);
+            btn.dataset.col = String(c);
+            btn.textContent = ".";
+            btn.addEventListener("click", () => {
+              btn.classList.toggle("active");
+              btn.textContent = btn.classList.contains("active") ? "#" : ".";
+            });
+            grid.appendChild(btn);
+          }
+        }
+
+        if (defaultShapes[id]) {
+          applyShapeToGrid(grid, defaultShapes[id]);
+        }
+        if (defaultQuantities[id] !== undefined) {
+          qtyInput.value = String(defaultQuantities[id]);
+        }
+
+        card.appendChild(grid);
+        return card;
+      }
+
+      function applyShapeToGrid(gridEl, shape) {
+        const cells = Array.from(gridEl.querySelectorAll(".cellToggle"));
+        for (const cell of cells) {
+          const r = Number(cell.dataset.row);
+          const c = Number(cell.dataset.col);
+          const active = Boolean(shape[r]?.[c]);
+          cell.classList.toggle("active", active);
+          cell.textContent = active ? "#" : ".";
+        }
+      }
+
+      const form = document.getElementById("form");
+      const statusEl = document.getElementById("status");
+      const errorEl = document.getElementById("error");
+      const resultEl = document.getElementById("result");
+      const areaInfo = document.getElementById("areaInfo");
+      const loadingEl = document.getElementById("loading");
+      areaInfo.textContent = `Max height/width: ${MAX_DIM}`;
+
+      form.addEventListener("submit", (e) => {
+        e.preventDefault();
+        errorEl.textContent = "";
+        resultEl.innerHTML = "";
+        statusEl.textContent = "Solving…";
+        loadingEl.style.display = "block";
+        // allow loading indicator to paint before heavy work
+        setTimeout(() => {
+          try {
+            const config = collectConfig();
+            const iterationLimit = collectIterationLimit();
+            const res = solve(config, { maxPieces: MAX_PIECES, maxQtyPerPiece: 20, iterationLimit });
+            if (!res.hasSolution) {
+              statusEl.textContent = res.iterationLimitReached
+                ? "No solution within iteration limit"
+                : "No solution";
+              resultEl.textContent = "";
+            } else {
+              statusEl.textContent = "Solution found";
+              renderBoard(config.height, config.width, res.placements);
+            }
+          } catch (err) {
+            statusEl.textContent = "Error";
+            errorEl.textContent = err.message ?? String(err);
+            console.error(err);
+          } finally {
+            loadingEl.style.display = "none";
+          }
+        }, 0);
+      });
+
+      function collectConfig() {
+        const height = Number(document.getElementById("height").value);
+        const width = Number(document.getElementById("width").value);
+        if (!Number.isFinite(height) || !Number.isFinite(width) || height <= 0 || width <= 0) {
+          throw new Error("Height and width must be positive numbers");
+        }
+        if (height > MAX_DIM || width > MAX_DIM) {
+          throw new Error(`Height and width must be <= ${MAX_DIM}`);
+        }
+        const pieces = [];
+        const cards = piecesEl.querySelectorAll(".piece");
+        cards.forEach((card) => {
+          const id = Number(card.dataset.id);
+          const qty = Number(card.querySelector(`#qty-${id}`).value);
+          if (qty <= 0) return; // disabled piece
+          const shape = [
+            [false, false, false],
+            [false, false, false],
+            [false, false, false],
+          ];
+          card.querySelectorAll(".cellToggle").forEach((cell) => {
+            const r = Number(cell.dataset.row);
+            const c = Number(cell.dataset.col);
+            const active = cell.classList.contains("active");
+            shape[r][c] = active;
+          });
+          pieces.push({ id, qty, shape });
+        });
+        if (pieces.length === 0) {
+          throw new Error("At least one piece with quantity > 0 is required");
+        }
+        return { height, width, pieces, maxArea: MAX_DIM * MAX_DIM };
+      }
+
+      function collectIterationLimit() {
+        const val = Number(document.getElementById("iterLimit").value);
+        if (!Number.isFinite(val) || val < 0) {
+          throw new Error("Iteration limit must be a number greater than or equal to 0");
+        }
+        return Math.floor(val);
+      }
+
+      function renderBoard(height, width, placements) {
+        const wrap = document.createElement("div");
+        wrap.className = "board-wrap";
+        wrap.style.gridTemplateColumns = `28px repeat(${width}, 72px) 28px`;
+        wrap.style.gridTemplateRows = `28px repeat(${height}, 72px) 28px`;
+
+        // Top labels
+        for (let c = 0; c < width; c++) {
+          const lab = document.createElement("div");
+          lab.className = "labels";
+          lab.textContent = String(c);
+          lab.style.gridColumn = String(c + 2);
+          lab.style.gridRow = "1";
+          wrap.appendChild(lab);
+        }
+
+        // Bottom labels
+        for (let c = 0; c < width; c++) {
+          const lab = document.createElement("div");
+          lab.className = "labels";
+          lab.textContent = String(c);
+          lab.style.gridColumn = String(c + 2);
+          lab.style.gridRow = String(height + 2);
+          wrap.appendChild(lab);
+        }
+
+        // Left labels
+        for (let r = 0; r < height; r++) {
+          const lab = document.createElement("div");
+          lab.className = "labels";
+          lab.textContent = String(r);
+          lab.style.gridColumn = "1";
+          lab.style.gridRow = String(r + 2);
+          wrap.appendChild(lab);
+        }
+
+        // Right labels
+        for (let r = 0; r < height; r++) {
+          const lab = document.createElement("div");
+          lab.className = "labels";
+          lab.textContent = String(r);
+          lab.style.gridColumn = String(width + 2);
+          lab.style.gridRow = String(r + 2);
+          wrap.appendChild(lab);
+        }
+
+        const board = document.createElement("div");
+        board.className = "board";
+        board.style.gridTemplateColumns = `repeat(${width}, 72px)`;
+        board.style.gridTemplateRows = `repeat(${height}, 72px)`;
+        board.style.gridColumn = `2 / span ${width}`;
+        board.style.gridRow = `2 / span ${height}`;
+
+        const totalCells = height * width;
+        const cells = Array.from({ length: totalCells }, (_, idx) => {
+          const cell = document.createElement("div");
+          cell.className = "cell";
+          cell.dataset.idx = String(idx);
+          board.appendChild(cell);
+          return cell;
+        });
+
+        const placementMap = Array(totalCells).fill(-1);
+        placements.forEach((p, idx) => {
+          p.cells.forEach((cellIdx) => {
+            placementMap[cellIdx] = idx;
+          });
+        });
+
+        const borderThick = "4px solid #111";
+        const borderThin = "1px solid rgba(0,0,0,0.12)";
+
+        placements.forEach((p, placementIdx) => {
+          const color = colors[p.pieceId % colors.length];
+          p.cells.forEach((idx) => {
+            const cell = cells[idx];
+            cell.style.background = color;
+            cell.style.color = "#000";
+            cell.textContent = String(p.pieceId);
+
+            const r = Math.floor(idx / width);
+            const c = idx % width;
+            const topSame = r > 0 && placementMap[idx - width] === placementIdx;
+            const bottomSame = r < height - 1 && placementMap[idx + width] === placementIdx;
+            const leftSame = c > 0 && placementMap[idx - 1] === placementIdx;
+            const rightSame = c < width - 1 && placementMap[idx + 1] === placementIdx;
+
+            cell.style.borderTop = topSame ? borderThin : borderThick;
+            cell.style.borderBottom = bottomSame ? borderThin : borderThick;
+            cell.style.borderLeft = leftSame ? borderThin : borderThick;
+            cell.style.borderRight = rightSame ? borderThin : borderThick;
+            cell.style.boxShadow = topSame && bottomSame && leftSame && rightSame
+              ? ""
+              : "0 0 0 1px rgba(0,0,0,0.08)";
+          });
+        });
+
+        wrap.appendChild(board);
+
+        const legend = document.createElement("div");
+        legend.className = "legend";
+        placements.forEach((p) => {
+          const pieceId = p.pieceId;
+          if (legend.querySelector(`[data-piece="${pieceId}"]`)) return;
+          const item = document.createElement("span");
+          item.dataset.piece = String(pieceId);
+          const sw = document.createElement("span");
+          sw.className = "swatch";
+          sw.style.background = colors[pieceId % colors.length];
+          item.append(sw, `Piece ${pieceId}`);
+          legend.appendChild(item);
+        });
+
+        resultEl.innerHTML = "";
+        resultEl.append(wrap, legend);
+      }
+    </script>
+  </body>
+</html>
